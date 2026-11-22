@@ -3,6 +3,7 @@ sample-data/
 *.log
 *.log.gz
 usercache.json
+!tests/fixtures/usercache.json
 
 # --- Secrets ---
 .env
