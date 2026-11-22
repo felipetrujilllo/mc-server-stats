@@ -1,6 +1,7 @@
 """Read each player's stats file into plain dicts for the leaderboard."""
 import json
 import os
+import sys
 from pathlib import Path
 
 TICKS_PER_HOUR = 72000  # 20 ticks/second * 3600 seconds
@@ -34,17 +35,26 @@ def load_players(server_dir=None):
         with open(cache_path, encoding="utf-8") as f:
             names = {e["uuid"]: e["name"] for e in json.load(f)}
 
+    stats_dir = server_dir / "world" / "players" / "stats"
+    if not stats_dir.is_dir():
+        # An empty leaderboard would hide a wrong MC_SERVER_DIR, so fail loudly.
+        raise FileNotFoundError("no stats folder at {}: is MC_SERVER_DIR the server folder?".format(stats_dir))
     adv_dir = server_dir / "world" / "players" / "advancements"
     players = []
-    for path in sorted((server_dir / "world" / "players" / "stats").glob("*.json")):
+    for path in sorted(stats_dir.glob("*.json")):
         uuid = path.stem
-        with open(path, encoding="utf-8") as f:
-            stats = json.load(f).get("stats", {})
         adv_path = adv_dir / path.name
-        advancements = 0  # a player can have stats but no advancements file yet
-        if adv_path.exists():
-            with open(adv_path, encoding="utf-8") as f:
-                advancements = count_advancements(json.load(f))
+        try:
+            with open(path, encoding="utf-8") as f:
+                stats = json.load(f).get("stats", {})
+            advancements = 0  # a player can have stats but no advancements file yet
+            if adv_path.exists():
+                with open(adv_path, encoding="utf-8") as f:
+                    advancements = count_advancements(json.load(f))
+        except ValueError as e:
+            # The server may be mid-autosave; this player is picked up on the next build.
+            print("warning: skipping {} (unreadable JSON: {})".format(f.name, e), file=sys.stderr)
+            continue
         custom = stats.get("minecraft:custom", {})  # missing sections/keys mean zero
         players.append({
             "uuid": uuid,

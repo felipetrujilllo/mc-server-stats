@@ -1,4 +1,5 @@
 """Tests for mcstats.stats.load_players, using the fake players in tests/fixtures/."""
+import io
 import json
 import os
 import shutil
@@ -82,6 +83,31 @@ class LoadPlayersTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=True):
             with self.assertRaisesRegex(RuntimeError, "MC_SERVER_DIR"):
                 load_players()
+
+    def test_missing_stats_folder_raises_naming_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(FileNotFoundError, "players.stats"):
+                load_players(tmp)
+
+    def test_truncated_stats_file_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shutil.copytree(FIXTURES / "world", Path(tmp) / "world")
+            shutil.copy(FIXTURES / "usercache.json", tmp)
+            (Path(tmp) / "world" / "players" / "stats" / (FAKE_UUID + ".json")).write_text('{"stats": {"minecr')
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                players = by_name(load_players(tmp))
+        self.assertEqual(set(players), {"CraftyOtter", "PixelMoth", "NewbieNova"})
+        self.assertIn(FAKE_UUID + ".json", err.getvalue())
+
+    def test_truncated_advancements_file_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shutil.copytree(FIXTURES / "world", Path(tmp) / "world")
+            shutil.copy(FIXTURES / "usercache.json", tmp)
+            (Path(tmp) / "world" / "players" / "advancements" / (OTTER + ".json")).write_text('{"minecraft:sto')
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                players = by_name(load_players(tmp))
+        self.assertEqual(set(players), {"PixelMoth", "NewbieNova"})
+        self.assertIn(OTTER + ".json", err.getvalue())
 
 
 class CountAdvancementsTests(unittest.TestCase):
