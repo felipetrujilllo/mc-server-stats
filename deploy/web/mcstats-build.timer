@@ -1,0 +1,14 @@
+# Starts mcstats-build.service every minute.
+[Unit]
+Description=Run mcstats-build.service every minute
+
+[Timer]
+# First run 1 minute after boot, then 1 minute after each run was started.
+OnBootSec=1min
+OnUnitActiveSec=1min
+# Run within 1 second of the planned time (systemd's default is to allow up to 1 minute of drift).
+AccuracySec=1s
+
+[Install]
+# Start the timer automatically at boot once it is enabled.
+WantedBy=timers.target

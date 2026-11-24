@@ -47,8 +47,8 @@ CT 100 "minecraft" (game)          Proxmox host gs63                 CT 101 (web
 
 ## Web container (CT 101)
 
-- **CT 101**, Debian 13, unprivileged, small: about 512 MB RAM, 1 CPU core, a few GB of disk (ticket #7).
-  The ID 101 is not yet confirmed free: run `pct list` on `gs63` before ticket #7.
+- **CT 101**, hostname `mcstats-web`, Debian 13, unprivileged, small: about 512 MB RAM, 1 CPU core, a few GB of disk (ticket #7).
+  Setup steps: [deploy/web/README.md](../deploy/web/README.md) (step 1 checks with `pct list` that 101 is free).
 - The host folder is bind-mounted read-only:
   `pct set 101 -mp0 /srv/mc-export,mp=/srv/mc-export,ro=1`
   (`mp0` = first mount point, `mp=` = path inside the container, `ro=1` = read-only).
@@ -106,6 +106,5 @@ Updates within seconds come in Phase 2 by reading the live log.
 
 ## Open items
 
-- Confirm CT ID 101 is free with `pct list` on `gs63` before ticket #7.
 - Set up Tailscale (host subnet router vs. inside CT 101).
 - Replace `http.server` with Caddy or nginx before any public exposure.

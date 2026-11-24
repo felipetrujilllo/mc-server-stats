@@ -1,0 +1,26 @@
+# Rebuilds the leaderboard page once. Started every minute by mcstats-build.timer.
+# Runs inside CT 101 (mcstats-web). Install steps: deploy/web/README.md.
+[Unit]
+Description=Rebuild the leaderboard page from /srv/mc-export
+
+[Service]
+# oneshot: run to the end, then stop. systemd won't start a second build while one is
+# still running, so two builds can never overlap.
+Type=oneshot
+# Normal user, not root: a bug in the build can't damage the container.
+User=mcstats
+Group=mcstats
+# Where the code reads the server files from (the read-only bind mount from the host).
+Environment=MC_SERVER_DIR=/srv/mc-export
+# The git clone; `python3 -m mcstats` finds the package here, so a `git pull` takes effect on the next run.
+WorkingDirectory=/opt/mc-server-stats
+ExecStart=/usr/bin/python3 -m mcstats build --out /var/www/mcstats
+# Hardening: the process can't gain root (e.g. via setuid programs) ...
+NoNewPrivileges=yes
+# ... sees the whole filesystem read-only ...
+ProtectSystem=strict
+# ... except the output folder (the atomic write creates its temp file there) ...
+ReadWritePaths=/var/www/mcstats
+# ... can't see /home or /root, and gets its own empty /tmp.
+ProtectHome=yes
+PrivateTmp=yes

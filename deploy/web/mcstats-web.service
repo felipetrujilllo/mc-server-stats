@@ -1,0 +1,27 @@
+# Serves /var/www/mcstats (the built index.html) on port 8080.
+# Runs inside CT 101 (mcstats-web). Install steps: deploy/web/README.md.
+# shortcut: Python's http.server is not hardened; fine for the home network only, swap for Caddy or nginx before any public exposure.
+[Unit]
+Description=Leaderboard web page on port 8080
+# Start once the network is up, so the server can listen on the container's address.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# Normal user, not root: ports above 1024 don't need root.
+User=mcstats
+Group=mcstats
+ExecStart=/usr/bin/python3 -m http.server 8080 --directory /var/www/mcstats
+# If it crashes, start it again (after 5 s, so a broken setup doesn't spin).
+Restart=on-failure
+RestartSec=5s
+# Hardening: can't gain root, sees the whole filesystem read-only (it only reads files),
+# can't see /home or /root, and gets its own empty /tmp.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+# Start at boot once it is enabled.
+WantedBy=multi-user.target

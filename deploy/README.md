@@ -1,6 +1,7 @@
 # deploy/
 
 Files that run on the **Proxmox host** (`gs63`), not in a container.
+The web container (CT 101) has its own files and guide: [deploy/web/README.md](web/README.md).
 
 | File | What it is |
 |---|---|
@@ -10,7 +11,16 @@ Files that run on the **Proxmox host** (`gs63`), not in a container.
 
 ## Install
 
-All commands run on: **Proxmox host (`root@gs63`)**, from a copy of this repo's `deploy/` folder.
+All commands run on: **Proxmox host (`root@gs63`)**.
+
+First get the three files onto the host (the repo is public, so no login is needed):
+```bash
+mkdir -p /root/mc-deploy && cd /root/mc-deploy
+for f in export.sh mc-export.service mc-export.timer; do
+  curl -fsSLO "https://raw.githubusercontent.com/felipetrujilllo/mc-server-stats/main/deploy/$f"
+done
+```
+`curl -fsSLO` downloads each file and keeps its name (`-f` = fail loudly on a missing file).
 
 ```bash
 install -m 755 export.sh /usr/local/bin/mc-export.sh
