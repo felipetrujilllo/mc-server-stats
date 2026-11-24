@@ -6,6 +6,17 @@ from pathlib import Path
 TICKS_PER_HOUR = 72000  # 20 ticks/second * 3600 seconds
 
 
+def count_advancements(advancements):
+    """Count finished real advancements, skipping recipe unlocks and the DataVersion key."""
+    return sum(
+        1 for key, value in advancements.items()
+        if key != "DataVersion"
+        and not key.startswith("minecraft:recipes/")
+        and isinstance(value, dict)
+        and value.get("done") is True
+    )
+
+
 def load_players(server_dir=None):
     """Return one dict per stats file in <server_dir>/world/players/stats/.
 
@@ -23,11 +34,17 @@ def load_players(server_dir=None):
         with open(cache_path, encoding="utf-8") as f:
             names = {e["uuid"]: e["name"] for e in json.load(f)}
 
+    adv_dir = server_dir / "world" / "players" / "advancements"
     players = []
     for path in sorted((server_dir / "world" / "players" / "stats").glob("*.json")):
         uuid = path.stem
         with open(path, encoding="utf-8") as f:
             stats = json.load(f).get("stats", {})
+        adv_path = adv_dir / path.name
+        advancements = 0  # a player can have stats but no advancements file yet
+        if adv_path.exists():
+            with open(adv_path, encoding="utf-8") as f:
+                advancements = count_advancements(json.load(f))
         custom = stats.get("minecraft:custom", {})  # missing sections/keys mean zero
         players.append({
             "uuid": uuid,
@@ -36,5 +53,6 @@ def load_players(server_dir=None):
             "deaths": custom.get("minecraft:deaths", 0),
             "mob_kills": custom.get("minecraft:mob_kills", 0),
             "kills": stats.get("minecraft:killed", {}),
+            "advancements": advancements,
         })
     return players

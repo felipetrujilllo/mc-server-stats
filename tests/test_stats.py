@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from mcstats.stats import load_players
+from mcstats.stats import count_advancements, load_players
 
 FIXTURES = Path(__file__).parent / "fixtures"
 OTTER = "3f9c2a71-8d4e-4b6a-9c15-7e2d0b8a4f63"
@@ -82,6 +82,42 @@ class LoadPlayersTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=True):
             with self.assertRaisesRegex(RuntimeError, "MC_SERVER_DIR"):
                 load_players()
+
+
+class CountAdvancementsTests(unittest.TestCase):
+    def test_only_done_true_counts(self):
+        adv = {
+            "minecraft:story/root": {"criteria": {}, "done": True},
+            "minecraft:adventure/adventuring_time": {"criteria": {}, "done": False},
+            "minecraft:story/mine_stone": {"criteria": {}},  # no done key at all
+        }
+        self.assertEqual(count_advancements(adv), 1)
+
+    def test_recipes_and_dataversion_are_ignored(self):
+        adv = {
+            "minecraft:story/root": {"criteria": {}, "done": True},
+            "minecraft:recipes/misc/stick": {"criteria": {}, "done": True},
+            "minecraft:recipes/tools/stone_pickaxe": {"criteria": {}, "done": True},
+            "DataVersion": 4556,
+        }
+        self.assertEqual(count_advancements(adv), 1)
+
+    def test_non_dict_values_are_skipped(self):
+        self.assertEqual(count_advancements({"minecraft:story/root": True, "minecraft:x/y": None}), 0)
+
+    def test_fixture_players_get_exact_counts(self):
+        players = by_name(load_players(FIXTURES))
+        self.assertEqual(players["PixelMoth"]["advancements"], 2)  # 2 real + 5 recipes + 1 partial
+        self.assertEqual(players["CraftyOtter"]["advancements"], 5)  # 5 real + 2 recipes + 1 partial
+        self.assertEqual(players["NewbieNova"]["advancements"], 0)  # only a recipe entry
+
+    def test_missing_advancements_file_means_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stats_dir = Path(tmp) / "world" / "players" / "stats"
+            stats_dir.mkdir(parents=True)
+            shutil.copy(FIXTURES / "world" / "players" / "stats" / (OTTER + ".json"), stats_dir)
+            [p] = load_players(tmp)
+        self.assertEqual(p["advancements"], 0)
 
 
 if __name__ == "__main__":
