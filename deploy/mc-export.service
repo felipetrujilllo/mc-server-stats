@@ -1,0 +1,10 @@
+# Runs deploy/export.sh once. Started every minute by mc-export.timer.
+# Install path: /usr/local/bin/mc-export.sh (see deploy/README.md).
+[Unit]
+Description=Copy Minecraft player files out of CT 100 into /srv/mc-export
+
+[Service]
+# oneshot: run to the end, then stop. systemd won't start a second copy while one is still
+# running, so two exports can never overlap and no lock file is needed.
+Type=oneshot
+ExecStart=/usr/local/bin/mc-export.sh

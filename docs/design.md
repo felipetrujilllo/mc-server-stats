@@ -31,7 +31,13 @@ CT 100 "minecraft" (game)          Proxmox host gs63                 CT 101 (web
 - It runs `pct exec 100 -- tar -C /opt/minecraft -cf - usercache.json world/players/stats world/players/advancements`.
   `pct exec` runs a command inside CT 100; `tar ... -cf -` packs the files and streams them out.
   `tar` only **reads**, so CT 100 is never modified.
-- The stream is unpacked into a staging folder on the host, `/var/tmp/mc-export-staging`.
+- The staging folder on the host, `/var/tmp/mc-export-staging`, is **emptied first** on every run,
+  so a file deleted on the server doesn't linger there (and `--delete` below can remove it).
+- The stream is unpacked into that staging folder with `tar --no-same-owner` (the copies are owned by
+  host root, not by the container's user ID), then `chmod -R a+rX` makes them readable by everyone.
+- If `tar` exits with code **1** (a file changed while it was read, e.g. an autosave mid-copy), that is only a
+  warning: the run continues, and the build skips half-written JSON. Any worse error stops the run
+  before `rsync`, so the previous good export stays in place.
 - Then `rsync -a --delete /var/tmp/mc-export-staging/ /srv/mc-export/` updates the export folder.
   Why rsync: it writes each file under a temporary name and then renames it, so the website never
   reads a half-copied file. It also updates files *inside* the same folder; replacing the whole folder
@@ -46,8 +52,9 @@ CT 100 "minecraft" (game)          Proxmox host gs63                 CT 101 (web
 - The host folder is bind-mounted read-only:
   `pct set 101 -mp0 /srv/mc-export,mp=/srv/mc-export,ro=1`
   (`mp0` = first mount point, `mp=` = path inside the container, `ro=1` = read-only).
-  Because the container is unprivileged, the host's root-owned files show up as owner `nobody`
-  inside CT 101. That is fine: they are world-readable (mode 644) and the site only reads them.
+  The export unpacks with `--no-same-owner`, so host root owns the copies, and `chmod -R a+rX`
+  makes them readable by everyone. Because CT 101 is unprivileged, host root shows up as owner
+  `nobody` inside it. That is fine: the files are world-readable and the site only reads them.
 - A systemd timer in CT 101 runs, **every 60 seconds**, as a normal (non-root) user:
   `MC_SERVER_DIR=/srv/mc-export python3 -m mcstats build --out /var/www/mcstats`
   The build writes `index.html` atomically and skips any JSON file that is half-written.
