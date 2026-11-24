@@ -15,6 +15,8 @@ Minecraft already records per-player stats and advancements (with timestamps) as
 and writes live events to its log. A small collector reads both, stores them in SQLite, and a
 web page shows the results. A custom Paper plugin may replace log parsing later.
 
+See [docs/design.md](docs/design.md) for how the website gets the server files and where it runs.
+
 ## Stack (planned)
 
 Python · SQLite · FastAPI · Docker Compose · Proxmox LXC · BlueMap  (might change)
