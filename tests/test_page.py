@@ -99,7 +99,7 @@ class RenderPageTests(unittest.TestCase):
         self.assertIn('<meta charset="utf-8">', self.html)
         self.assertIn('name="viewport"', self.html)
         self.assertIn("<title>", self.html)
-        self.assertRegex(self.html, r"Last updated \d{4}-\d\d-\d\d \d\d:\d\d UTC")
+        self.assertRegex(self.html, r'<time datetime="\d{4}-\d\d-\d\dT\d\d:\d\dZ">\d{4}-\d\d-\d\d \d\d:\d\d UTC</time>')
 
     def test_play_time_highest_first_rounded_to_one_decimal(self):
         board = section(self.html, "Most play time")
@@ -143,7 +143,9 @@ class RenderPageTests(unittest.TestCase):
         self.assertEqual(rows(section(html, "Top killer per mob")), [["zombie", "Amy", "4"]])
 
     def test_crown_on_first_place_ties_share_it_and_zero_gets_none(self):
-        self.assertEqual(re.findall(r'<td class="top">(.*?)</td>', section(self.html, "Most deaths")), ["CraftyOtter"])
+        self.assertEqual(re.findall(r'<td class="top">(.*?)</td>', section(self.html, "Most play time")), ["CraftyOtter"])
+        # deaths: the crown goes to whoever died least (NewbieNova, 0 deaths)
+        self.assertEqual(re.findall(r'<td class="top">(.*?)</td>', section(self.html, "Most deaths")), ["NewbieNova"])
         self.assertNotIn('class="top"', section(self.html, "Top killer per mob"))
         players = [
             {"name": "Amy", "hours": 2.0, "deaths": 0, "mob_kills": 0, "advancements": 0, "kills": {}},
@@ -151,7 +153,8 @@ class RenderPageTests(unittest.TestCase):
         ]
         html = render_page(players)
         self.assertEqual(re.findall(r'<td class="top">(.*?)</td>', section(html, "Most play time")), ["Amy", "Zed_"])
-        self.assertNotIn('class="top"', section(html, "Most deaths"))
+        self.assertNotIn('class="top"', section(html, "Most mob kills"))
+        self.assertEqual(re.findall(r'<td class="top">(.*?)</td>', section(html, "Most deaths")), ["Amy", "Zed_"])
 
     def test_names_are_html_escaped(self):
         players = [{"name": "<b>", "hours": 1.0, "deaths": 1, "mob_kills": 1, "advancements": 1,
