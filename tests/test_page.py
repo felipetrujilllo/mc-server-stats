@@ -32,6 +32,34 @@ def rows(html):
     return [re.findall(r"<td[^>]*>(.*?)</td>", r) for r in re.findall(r"<tr>(.*?)</tr>", html)][1:]
 
 
+class ServeCommandTests(unittest.TestCase):
+    def test_serve_builds_fresh_page_on_each_load(self):
+        import socket, time, urllib.request
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "mcstats", "serve", "--out", tmp, "--port", str(port)],
+                cwd=REPO, env=dict(os.environ, MC_SERVER_DIR=str(FIXTURES)),
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.addCleanup(proc.wait)
+            self.addCleanup(proc.terminate)
+            url = "http://127.0.0.1:{}/".format(port)
+            for _ in range(50):
+                try:
+                    body = urllib.request.urlopen(url, timeout=2).read().decode()
+                    break
+                except OSError:
+                    time.sleep(0.1)
+            else:
+                self.fail("serve never answered")
+            for name in NAMES:  # the folder started empty, so the GET itself built the page
+                self.assertIn(name, body)
+            (Path(tmp) / "index.html").write_text("stale")
+            self.assertIn("CraftyOtter", urllib.request.urlopen(url, timeout=2).read().decode())
+
+
 class BuildCommandTests(unittest.TestCase):
     def run_build(self, env, out):
         return subprocess.run([sys.executable, "-m", "mcstats", "build", "--out", out],
@@ -113,6 +141,17 @@ class RenderPageTests(unittest.TestCase):
         html = render_page(players)
         self.assertLess(section(html, "Most deaths").index("Amy"), section(html, "Most deaths").index("Zed_"))
         self.assertEqual(rows(section(html, "Top killer per mob")), [["zombie", "Amy", "4"]])
+
+    def test_crown_on_first_place_ties_share_it_and_zero_gets_none(self):
+        self.assertEqual(re.findall(r'<td class="top">(.*?)</td>', section(self.html, "Most deaths")), ["CraftyOtter"])
+        self.assertNotIn('class="top"', section(self.html, "Top killer per mob"))
+        players = [
+            {"name": "Amy", "hours": 2.0, "deaths": 0, "mob_kills": 0, "advancements": 0, "kills": {}},
+            {"name": "Zed_", "hours": 2.0, "deaths": 0, "mob_kills": 0, "advancements": 0, "kills": {}},
+        ]
+        html = render_page(players)
+        self.assertEqual(re.findall(r'<td class="top">(.*?)</td>', section(html, "Most play time")), ["Amy", "Zed_"])
+        self.assertNotIn('class="top"', section(html, "Most deaths"))
 
     def test_names_are_html_escaped(self):
         players = [{"name": "<b>", "hours": 1.0, "deaths": 1, "mob_kills": 1, "advancements": 1,
