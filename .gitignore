@@ -1,0 +1,33 @@
+# --- Real server data: never commit (contains friends' names/UUIDs and IP addresses) ---
+sample-data/
+*.log
+*.log.gz
+usercache.json
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Local databases / generated output ---
+*.db
+*.sqlite
+*.sqlite3
+out/
+dist/
+build/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- OS / editors ---
+.DS_Store
+.vscode/
+.idea/
