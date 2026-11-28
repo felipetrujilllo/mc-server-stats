@@ -238,6 +238,22 @@ git -C /opt/mc-server-stats pull
 Fetches the newest code. The build reads the code fresh on every run, so changes show up within a minute; no restart needed.
 If a unit file changed, repeat step 7's `cp` and `systemctl daemon-reload`, then `systemctl restart mcstats-web.service`.
 
+## Optional: live box from the Discord bot
+
+The build also writes `stats.json` (the same boards as the page), which the Discord bot reads for
+`/mc leaderboard`. In the other direction, the bot serves `live.json` (who's online now and today's
+play time). Set `LIVE_URL` and each build copies it next to the page, where a small box shows it.
+The address stays out of the repo, in a drop-in file that only exists in this container.
+
+Run on: **Web container**
+```bash
+mkdir -p /etc/systemd/system/mcstats-build.service.d
+printf '[Service]\nEnvironment=LIVE_URL=http://<bot-ip>:8081/live.json\n' > /etc/systemd/system/mcstats-build.service.d/live.conf
+systemctl daemon-reload
+```
+Replace `<bot-ip>` with the bot container's address. If the bot is down, the build keeps working and
+the page hides the box once its data is 3 minutes old.
+
 ## Undo
 
 > **Warning: `pct destroy` permanently deletes CT 101 and everything inside it.** It does not touch CT 100

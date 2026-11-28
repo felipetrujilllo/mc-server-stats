@@ -1,4 +1,5 @@
-"""Render the leaderboard HTML page and write it atomically."""
+"""Render the leaderboard HTML page (plus stats.json for the Discord bot) and write them atomically."""
+import json
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -66,12 +67,29 @@ td.top::before{content:"";display:inline-block;width:16px;height:12px;margin-rig
 body::before{content:"";position:absolute;top:0;left:0;right:0;height:128px;pointer-events:none;
 background:url(\"""" + CLOUDS + """\") 0 0/512px 128px repeat-x;animation:drift 60s linear infinite}
 @keyframes drift{to{background-position-x:512px}}
-@media(prefers-reduced-motion:reduce){body::before{animation:none}}"""
+@media(prefers-reduced-motion:reduce){body::before{animation:none}}
+/* live box (who's online now), bottom left, same look as the toast; hidden until live.json loads and is fresh */
+.live{position:fixed;left:16px;bottom:16px;max-width:18rem;padding:10px 14px;background:#212121;color:#fff;font-size:.85rem;line-height:1.5;
+box-shadow:inset 0 0 0 3px #555,0 -3px #000,0 3px #000,-3px 0 #000,3px 0 #000}
+.live strong{font-weight:400;color:#5f5}.live.off strong{color:#f55}.live p{margin:0}.live ul{margin:.3rem 0 0;padding:0;list-style:none;color:#aaa}
+@media(max-width:700px){aside.live{position:static;width:fit-content;margin:24px auto 0 16px}}"""
 
 
 # Turns the UTC build time into "5 min ago" in the reader's browser; without JS the UTC time stays.
 AGO_JS = """const t=document.querySelector("time"),ago=()=>{const m=Math.round((Date.now()-new Date(t.dateTime))/6e4);
 t.textContent=m<1?"just now":m<60?m+" min ago":m<1440?Math.round(m/60)+" h ago":Math.round(m/1440)+" days ago"};ago();setInterval(ago,3e4);"""
+
+# Fills the live box from live.json (copied from the Discord bot by each build). Hidden when the file is
+# missing or older than 3 minutes, so a stopped bot never shows a stale "online". textContent only: no HTML injection.
+LIVE_JS = """const L=document.getElementById("live"),el=(t,x)=>{const e=document.createElement(t);e.textContent=x;return e},
+dur=s=>{const m=Math.floor(s/60);return m>=60?Math.floor(m/60)+"h "+m%60+"m":m+"m"};
+async function live(){try{const r=await fetch("live.json",{cache:"no-store"});if(!r.ok)throw 0;const d=await r.json();
+if(Date.now()-new Date(d.updated)>18e4)throw 0;L.replaceChildren();L.classList.toggle("off",!d.online);
+L.append(el("strong",d.online?"Server online":"Server offline"));
+if(d.online)L.append(el("p",d.count?d.count+" online: "+d.players.join(", "):"Nobody playing right now"));
+const t=Object.entries(d.today.players||{});if(t.length){L.append(el("p","Today:"));const u=document.createElement("ul");
+t.slice(0,5).forEach(([n,s])=>u.append(el("li",n+" \u00b7 "+dur(s))));L.append(u)}L.hidden=false}catch(e){L.hidden=true}}
+live();setInterval(live,3e4);"""
 
 
 def ranked(players, key):
@@ -109,19 +127,36 @@ def table(headers, rows, crown=None):
     return "<table><tr>{}</tr>\n{}</table>".format(head, body)
 
 
+def boards(players):
+    """(title, column headers, rows, crown) for every board. Shared by the page and stats.json."""
+    return [
+        ("Most play time", ["Player", "Hours"], [(p["name"], round(p["hours"], 1)) for p in ranked(players, "hours")], "most"),
+        ("Most deaths", ["Player", "Deaths"], [(p["name"], p["deaths"]) for p in ranked(players, "deaths")], "fewest"),
+        ("Most mob kills", ["Player", "Mob kills"], [(p["name"], p["mob_kills"]) for p in ranked(players, "mob_kills")], "most"),
+        ("Most advancements", ["Player", "Advancements"], [(p["name"], p["advancements"]) for p in ranked(players, "advancements")], "most"),
+        ("Top killer per mob", ["Mob", "Player", "Kills"], top_killers(players), None),
+    ]
+
+
+def render_stats_json(players, now=None):
+    """The same boards as the page, as JSON for the Discord bot's /mc leaderboard.
+    Each row is [player, value], or [player, mob, kills] for the per-mob board."""
+    now = now or datetime.now(timezone.utc)
+    out = []
+    for title, headers, rows, _ in boards(players):
+        if headers[0] == "Mob":  # bot shows the player first: [player, mob, kills]
+            rows = [(name, mob, kills) for mob, name, kills in rows]
+        out.append({"title": title, "unit": headers[-1].lower(), "rows": [list(r) for r in rows]})
+    return json.dumps({"updated": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "boards": out}, indent=1) + "\n"
+
+
 def render_page(players, now=None):
     """Return the full HTML page. Every player and mob name is HTML-escaped."""
     now = now or datetime.now(timezone.utc)
-    sections = [
-        ("Most play time", table(["Player", "Hours"], [(p["name"], round(p["hours"], 1)) for p in ranked(players, "hours")], crown="most")),
-        ("Most deaths", table(["Player", "Deaths"], [(p["name"], p["deaths"]) for p in ranked(players, "deaths")], crown="fewest")),
-        ("Most mob kills", table(["Player", "Mob kills"], [(p["name"], p["mob_kills"]) for p in ranked(players, "mob_kills")], crown="most")),
-        ("Most advancements", table(["Player", "Advancements"], [(p["name"], p["advancements"]) for p in ranked(players, "advancements")], crown="most")),
-        ("Top killer per mob", table(["Mob", "Player", "Kills"], top_killers(players))),
-    ]
-    boards = ['<section><h2>{}</h2>\n{}</section>'.format(title, t) for title, t in sections]
+    sections = [(title, table(headers, rows, crown=crown)) for title, headers, rows, crown in boards(players)]
+    boards_html = ['<section><h2>{}</h2>\n{}</section>'.format(title, t) for title, t in sections]
     # Two book pages: first three boards on the left, the rest on the right.
-    body = '<div class="page">\n{}\n</div>\n<div class="page">\n{}\n</div>'.format("\n".join(boards[:3]), "\n".join(boards[3:]))
+    body = '<div class="page">\n{}\n</div>\n<div class="page">\n{}\n</div>'.format("\n".join(boards_html[:3]), "\n".join(boards_html[3:]))
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -137,22 +172,23 @@ def render_page(players, now=None):
 </main>
 <aside class="toast"><span class="icon"></span><p><strong>Leaderboard updated!</strong><br>
 <time datetime="{iso}">{updated}</time></p></aside>
+<aside class="live" id="live" hidden></aside>
 <script>{script}</script>
 </body>
 </html>
-""".format(css=CSS, body=body, script=AGO_JS, iso=now.strftime("%Y-%m-%dT%H:%MZ"), updated=now.strftime("%Y-%m-%d %H:%M UTC"))
+""".format(css=CSS, body=body, script=AGO_JS + "\n" + LIVE_JS, iso=now.strftime("%Y-%m-%dT%H:%MZ"), updated=now.strftime("%Y-%m-%d %H:%M UTC"))
 
 
-def write_page(out_dir, html):
-    """Write out_dir/index.html via a temp file + rename, so readers never see a half-written page."""
+def write_page(out_dir, html, name="index.html"):
+    """Write out_dir/<name> via a temp file + rename, so readers never see a half-written file."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=out_dir, prefix=".index-", suffix=".tmp")  # same folder: rename stays atomic
+    fd, tmp = tempfile.mkstemp(dir=out_dir, prefix=".{}-".format(Path(name).stem), suffix=".tmp")  # same folder: rename stays atomic
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(html)
         os.chmod(tmp, 0o644)  # mkstemp makes 0600; the web server user must be able to read it
-        os.replace(tmp, out_dir / "index.html")
+        os.replace(tmp, out_dir / name)
     except BaseException:
         os.unlink(tmp)
         raise
